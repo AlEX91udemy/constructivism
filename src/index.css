@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-milk: #F6F2E9;
+    --color-milk-dark: #EAE3D5;
+    --color-ink: #111111;
+    --color-graphite: #2B2B2B;
+    --color-red: #D62828;
+    --color-yellow: #EAB308;
+  }
+
+  html {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #F6F2E9;
+    color: #111111;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+.font-display {
+  font-family: 'Oswald', Impact, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.font-mono-tech {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle printed poster grain texture */
+.poster-grain {
+  background-image: radial-gradient(rgba(17, 17, 17, 0.065) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.poster-grain-dark {
+  background-image: radial-gradient(rgba(246, 242, 233, 0.08) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Constructivist architectural grid */
+.constructivist-grid {
+  background-size: 48px 48px;
+  background-image: 
+    linear-gradient(to right, rgba(17, 17, 17, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(17, 17, 17, 0.07) 1px, transparent 1px);
+}
+
+.constructivist-grid-dark {
+  background-size: 48px 48px;
+  background-image: 
+    linear-gradient(to right, rgba(246, 242, 233, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(246, 242, 233, 0.07) 1px, transparent 1px);
+}
+
+/* Diagonal hazard/poster hatching */
+.diagonal-hatch {
+  background: repeating-linear-gradient(
+    -45deg,
+    #111111,
+    #111111 4px,
+    transparent 4px,
+    transparent 10px
+  );
+}
+
+.diagonal-hatch-red {
+  background: repeating-linear-gradient(
+    -45deg,
+    #D62828,
+    #D62828 4px,
+    transparent 4px,
+    transparent 10px
+  );
+}
+
+/* Hard lithographic poster shadow */
+.poster-shadow {
+  box-shadow: 6px 6px 0px #111111;
+}
+
+.poster-shadow-red {
+  box-shadow: 6px 6px 0px #D62828;
+}
+
+.poster-shadow-milk {
+  box-shadow: 6px 6px 0px #F6F2E9;
+}
