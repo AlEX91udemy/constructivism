@@ -33,6 +33,61 @@ export interface BambuPrintPreset {
   nozzle: string;
 }
 
+export type PrintProfileId = 'detail' | 'robust' | 'miniature';
+
+export interface PrintProfile {
+  id: PrintProfileId;
+  label: string;
+  nozzleMm: number;
+  layerHeightMm: number;
+  minStrutRadiusScene: number;
+  minWallMm: number;
+  minClearanceMm: number;
+  supportStrategy: string;
+  description: string;
+}
+
+/**
+ * Geometry thresholds are expressed in scene units where 1 unit = 25 mm in
+ * the exported STL. They keep the same model printable across common FDM
+ * nozzle sizes without changing the historical proportions unnecessarily.
+ */
+export const PRINT_PROFILES: Record<PrintProfileId, PrintProfile> = {
+  detail: {
+    id: 'detail',
+    label: 'Детализация',
+    nozzleMm: 0.4,
+    layerHeightMm: 0.16,
+    minStrutRadiusScene: 0.028,
+    minWallMm: 0.8,
+    minClearanceMm: 0.5,
+    supportStrategy: 'Tree Auto для консолей и ажурных ферм',
+    description: 'Максимум мелких окон, рёбер и ограждений для сопла 0,4 мм.',
+  },
+  robust: {
+    id: 'robust',
+    label: 'Надёжная печать',
+    nozzleMm: 0.4,
+    layerHeightMm: 0.2,
+    minStrutRadiusScene: 0.04,
+    minWallMm: 1.2,
+    minClearanceMm: 0.7,
+    supportStrategy: 'Минимум поддержек, Tree Slim только под критическими выносами',
+    description: 'Утолщённые стержни и ограждения для повседневной FDM-печати.',
+  },
+  miniature: {
+    id: 'miniature',
+    label: 'Миниатюра',
+    nozzleMm: 0.2,
+    layerHeightMm: 0.1,
+    minStrutRadiusScene: 0.022,
+    minWallMm: 0.6,
+    minClearanceMm: 0.35,
+    supportStrategy: 'Tree Auto с ручной проверкой тонких навесов',
+    description: 'Мелкие переплёты и фермы для сопла 0,2–0,25 мм.',
+  },
+};
+
 export const BAMBU_PRESETS: Record<string, BambuPrintPreset> = {
   'white-tower': {
     scaleLabel: '1:250',
@@ -385,6 +440,8 @@ export interface ModelVerificationReport {
   fitsBuildPlate256: boolean;
   validNormals: boolean;
   watertightPlinth: boolean;
+  degenerateTriangleCount: number;
+  minEdgeMm: number;
   stlBytes: number;
   passed: boolean;
 }
@@ -411,6 +468,8 @@ export function verifyThreeGroup(
       fitsBuildPlate256: false,
       validNormals: false,
       watertightPlinth: false,
+      degenerateTriangleCount: 0,
+      minEdgeMm: 0,
       stlBytes: 0,
       passed: false,
     };
@@ -433,10 +492,29 @@ export function verifyThreeGroup(
   let minZ = Infinity;
   let maxZ = -Infinity;
   let validNormals = triangleCount > 0;
+  let degenerateTriangleCount = 0;
+  let minEdgeMm = Infinity;
 
   for (let i = 0; i < triangleCount; i++) {
     const { v1, v2, v3, normal } = triangles[i];
     const pts = [v1, v2, v3];
+    const edgeLengths = [
+      Math.hypot(v2.x - v1.x, v2.y - v1.y, v2.z - v1.z),
+      Math.hypot(v3.x - v2.x, v3.y - v2.y, v3.z - v2.z),
+      Math.hypot(v1.x - v3.x, v1.y - v3.y, v1.z - v3.z),
+    ];
+    const twiceArea = Math.abs(
+      (v2.y - v1.y) * (v3.z - v1.z) - (v2.z - v1.z) * (v3.y - v1.y)
+    ) + Math.abs(
+      (v2.z - v1.z) * (v3.x - v1.x) - (v2.x - v1.x) * (v3.z - v1.z)
+    ) + Math.abs(
+      (v2.x - v1.x) * (v3.y - v1.y) - (v2.y - v1.y) * (v3.x - v1.x)
+    );
+    minEdgeMm = Math.min(minEdgeMm, ...edgeLengths);
+    if (twiceArea < 0.0001 || edgeLengths.some((edge) => edge < 0.05)) {
+      degenerateTriangleCount += 1;
+      validNormals = false;
+    }
     for (let p = 0; p < 3; p++) {
       const pt = pts[p];
       if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) {
@@ -471,12 +549,14 @@ export function verifyThreeGroup(
     heightMm <= 256;
 
   const watertightPlinth = minZ >= -2 && minZ <= 5;
+  const finiteMinEdgeMm = Number.isFinite(minEdgeMm) ? Math.round(minEdgeMm * 100) / 100 : 0;
   const stlBytes = 84 + triangleCount * 50;
   const passed =
     meshCount >= 8 &&
     triangleCount >= 100 &&
     fitsBuildPlate256 &&
     validNormals &&
+    degenerateTriangleCount === 0 &&
     watertightPlinth &&
     stlBytes > 5000;
 
@@ -490,6 +570,8 @@ export function verifyThreeGroup(
     fitsBuildPlate256,
     validNormals,
     watertightPlinth,
+    degenerateTriangleCount,
+    minEdgeMm: finiteMinEdgeMm,
     stlBytes,
     passed,
   };

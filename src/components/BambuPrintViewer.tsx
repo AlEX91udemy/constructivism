@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -22,6 +22,9 @@ import {
   BAMBU_PRESETS,
   verifyThreeGroup,
   ModelVerificationReport,
+  PRINT_PROFILES,
+  PrintProfile,
+  PrintProfileId,
 } from '../utils/stlGenerator';
 import { BUILDINGS } from '../data/constructivismData';
 import {
@@ -219,6 +222,8 @@ interface Strut3DProps {
 
 const UP_VEC = new THREE.Vector3(0, 1, 0);
 
+const PrintProfileContext = createContext<PrintProfile>(PRINT_PROFILES.detail);
+
 const Strut3D: React.FC<Strut3DProps> = ({
   start,
   end,
@@ -228,6 +233,11 @@ const Strut3D: React.FC<Strut3DProps> = ({
   wireframe,
   clipPlane,
 }) => {
+  const printProfile = useContext(PrintProfileContext);
+  // The scene uses 1 unit = 25 mm for STL export. Keep every linear member
+  // above 0.7 mm so it survives a 0.4 mm nozzle after slicing.
+  const printableRadius = Math.max(radius, printProfile.minStrutRadiusScene);
+  const printableSegments = Math.max(segments, 10);
   const { position, quaternion, length } = useMemo(() => {
     const vStart = new THREE.Vector3(...start);
     const vEnd = new THREE.Vector3(...end);
@@ -249,7 +259,7 @@ const Strut3D: React.FC<Strut3DProps> = ({
 
   return (
     <mesh position={position} quaternion={quaternion} castShadow>
-      <cylinderGeometry args={[radius, radius, length, segments]} />
+      <cylinderGeometry args={[printableRadius, printableRadius, length, printableSegments]} />
       <meshStandardMaterial
         color={color}
         roughness={0.32}
@@ -728,6 +738,35 @@ export const ConstructivistR3FModel: React.FC<ConstructivistR3FModelProps> = ({
             <cylinderGeometry args={[0.012, 0.018, 0.58, 10]} />
             <meshStandardMaterial {...mat(palette.accentRed, 0.3, 0.5)} />
           </mesh>
+          {/* Narrow maintenance ladder from the tank gallery to the roof deck. The
+              rails are deliberately thickened by Strut3D for reliable FDM output. */}
+          <Strut3D
+            start={[0.92, 2.28, 1.08]}
+            end={[0.92, 3.76, 1.08]}
+            radius={0.022}
+            color={palette.frame}
+            wireframe={wireframe}
+            clipPlane={clipPlane}
+          />
+          <Strut3D
+            start={[1.12, 2.28, 1.08]}
+            end={[1.12, 3.76, 1.08]}
+            radius={0.022}
+            color={palette.frame}
+            wireframe={wireframe}
+            clipPlane={clipPlane}
+          />
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <Strut3D
+              key={`white-tower-ladder-rung-${idx}`}
+              start={[0.92, 2.38 + idx * 0.18, 1.08]}
+              end={[1.12, 2.38 + idx * 0.18, 1.08]}
+              radius={0.022}
+              color={palette.frame}
+              wireframe={wireframe}
+              clipPlane={clipPlane}
+            />
+          ))}
         </group>
       )}
 
@@ -846,6 +885,31 @@ export const ConstructivistR3FModel: React.FC<ConstructivistR3FModelProps> = ({
               <meshStandardMaterial {...mat(palette.frame, 0.3, 0.45)} />
             </mesh>
           ))}
+
+          {/* Repeating projecting balconies on the long facade. The raised front
+              rails remain visible after slicing and reinforce the slab rhythm. */}
+          {[1.12, 1.48, 1.84, 2.2].map((by, levelIdx) =>
+            [-1.55, -0.2, 1.15].map((bx, balconyIdx) => (
+              <group key={`narkomfin-balcony-${levelIdx}-${balconyIdx}`}>
+                <mesh position={[bx, by, 0.54]} castShadow>
+                  <boxGeometry args={[0.58, 0.05, 0.24]} />
+                  <meshStandardMaterial {...mat(palette.wallSecondary, 0.42, 0.1)} />
+                </mesh>
+                <mesh position={[bx, by + 0.1, 0.68]}>
+                  <boxGeometry args={[0.58, 0.12, 0.025]} />
+                  <meshStandardMaterial {...mat(palette.frame, 0.3, 0.45)} />
+                </mesh>
+                <mesh position={[bx - 0.24, by + 0.1, 0.68]}>
+                  <boxGeometry args={[0.025, 0.16, 0.025]} />
+                  <meshStandardMaterial {...mat(palette.frame, 0.3, 0.45)} />
+                </mesh>
+                <mesh position={[bx + 0.24, by + 0.1, 0.68]}>
+                  <boxGeometry args={[0.025, 0.16, 0.025]} />
+                  <meshStandardMaterial {...mat(palette.frame, 0.3, 0.45)} />
+                </mesh>
+              </group>
+            ))
+          )}
 
           {/* Covered 2nd-floor bridge & Communal Block (коммунальный корпус) */}
           <mesh position={[1.82, 1.05, -0.42]} castShadow>
@@ -1964,6 +2028,39 @@ export const ConstructivistR3FModel: React.FC<ConstructivistR3FModelProps> = ({
             <sphereGeometry args={[1.24, 44, 28, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
             <meshStandardMaterial {...mat(palette.frame, 0.32, 0.42)} />
           </mesh>
+          {/* Printable meridian ribs and latitude rings make the dome legible at
+              1:300 scale and prevent the smooth shell from losing its structure. */}
+          {Array.from({ length: 20 }).map((_, i) => {
+            const angle = (i / 20) * Math.PI * 2;
+            return (
+              <Strut3D
+                key={`dome-meridian-${i}`}
+                start={[0.15 + Math.cos(angle) * 1.24, 1.62, -0.1 + Math.sin(angle) * 1.24]}
+                end={[0.15, 3.205, -0.1]}
+                radius={0.024}
+                segments={12}
+                color={palette.wallSecondary}
+                wireframe={wireframe}
+                clipPlane={clipPlane}
+              />
+            );
+          })}
+          {[0.22, 0.44, 0.66, 0.84].map((latitude) => {
+            const phi = latitude * (Math.PI / 2);
+            const ringRadius = 1.24 * Math.cos(phi);
+            const ringY = 1.62 + 1.28 * 1.24 * Math.sin(phi);
+            return (
+              <mesh
+                key={`dome-latitude-${latitude}`}
+                position={[0.15, ringY, -0.1]}
+                rotation={[Math.PI / 2, 0, 0]}
+                castShadow
+              >
+                <torusGeometry args={[ringRadius, 0.028, 8, 44]} />
+                <meshStandardMaterial {...mat(palette.wallSecondary, 0.38, 0.28)} />
+              </mesh>
+            );
+          })}
           {/* Top flagpole & crown ring on dome summit */}
           <mesh position={[0.15, 3.22, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
             <torusGeometry args={[0.24, 0.02, 8, 24]} />
@@ -2287,6 +2384,7 @@ export const BambuPrintViewer: React.FC<BambuPrintViewerProps> = ({
   const [runAllAudit, setRunAllAudit] = useState<boolean>(false);
   const [allReports, setAllReports] = useState<ModelVerificationReport[] | null>(null);
   const [showAuditTable, setShowAuditTable] = useState<boolean>(false);
+  const [printProfileId, setPrintProfileId] = useState<PrintProfileId>('detail');
 
   const exportGroupRef = useRef<THREE.Group | null>(null);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -2296,6 +2394,7 @@ export const BambuPrintViewer: React.FC<BambuPrintViewerProps> = ({
   const cameraSpec =
     BUILDING_CAMERA_SPECS[buildingId] || BUILDING_CAMERA_SPECS['white-tower'];
   const palette = useMemo(() => getFilamentPalette('architectural'), []);
+  const printProfile = PRINT_PROFILES[printProfileId];
 
   // Dynamic horizontal clipping plane for 3D Slicer layer preview
   const clipPlane = useMemo(() => {
@@ -2312,7 +2411,7 @@ export const BambuPrintViewer: React.FC<BambuPrintViewerProps> = ({
       }
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [buildingId]);
+  }, [buildingId, printProfileId]);
 
   const handleSelectCameraPreset = (nextPreset: CameraViewPreset) => {
     soundEngine.playSfx('click');
@@ -2436,25 +2535,27 @@ export const BambuPrintViewer: React.FC<BambuPrintViewerProps> = ({
               />
 
               {/* High-Detail Constructivist Monument Replica */}
-              <ConstructivistR3FModel
-                buildingId={buildingId}
-                palette={palette}
-                clipPlane={clipPlane}
-                wireframe={wireframe}
-                exportGroupRef={exportGroupRef}
-              />
-
-              {/* Optional Offscreen Batch Audit of all 16 Monuments */}
-              {runAllAudit && (
-                <AllModelsBatchVerifier
+              <PrintProfileContext.Provider value={printProfile}>
+                <ConstructivistR3FModel
+                  buildingId={buildingId}
                   palette={palette}
                   clipPlane={clipPlane}
-                  onComplete={(results) => {
-                    setAllReports(results);
-                    setRunAllAudit(false);
-                  }}
+                  wireframe={wireframe}
+                  exportGroupRef={exportGroupRef}
                 />
-              )}
+
+                {/* Optional Offscreen Batch Audit of all 16 Monuments */}
+                {runAllAudit && (
+                  <AllModelsBatchVerifier
+                    palette={palette}
+                    clipPlane={clipPlane}
+                    onComplete={(results) => {
+                      setAllReports(results);
+                      setRunAllAudit(false);
+                    }}
+                  />
+                )}
+              </PrintProfileContext.Provider>
 
               <OrbitControls
                 ref={controlsRef}
@@ -2693,6 +2794,40 @@ export const BambuPrintViewer: React.FC<BambuPrintViewerProps> = ({
       </div>
 
       {/* Bambu Studio Print Profile Specs & STL Download CTA */}
+      <div className="bg-[#2B2B2B] border border-[#F6F2E9]/20 p-2.5 space-y-2 font-mono-tech text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[#EAB308] uppercase font-bold">Профиль печати</span>
+          <span className="text-[#EAE3D5]/70">
+            Сопло {printProfile.nozzleMm.toLocaleString('ru-RU')} мм · слой {printProfile.layerHeightMm.toLocaleString('ru-RU')} мм
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Профиль 3D-печати">
+          {(Object.values(PRINT_PROFILES) as PrintProfile[]).map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => {
+                soundEngine.playSfx('click');
+                setPrintProfileId(profile.id);
+                setAllReports(null);
+              }}
+              className={`px-2.5 py-1 uppercase border transition-colors cursor-pointer ${
+                profile.id === printProfileId
+                  ? 'bg-[#EAB308] text-[#111111] border-[#EAB308] font-bold'
+                  : 'bg-[#1C1C1C] text-[#F6F2E9] border-[#F6F2E9]/30 hover:border-[#EAB308]'
+              }`}
+            >
+              {profile.label}
+            </button>
+          ))}
+        </div>
+        <div className="text-[#EAE3D5]/75 leading-snug">
+          {printProfile.description} Минимальный стержень {(
+            printProfile.minStrutRadiusScene * 2 * 25
+          ).toFixed(1)} мм · стенка от {printProfile.minWallMm.toLocaleString('ru-RU')} мм · зазор от {printProfile.minClearanceMm.toLocaleString('ru-RU')} мм.
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono-tech tabular-nums">
         <div className="bg-[#2B2B2B] p-2 border border-[#F6F2E9]/15">
           <span className="text-[#EAE3D5]/70 block">Профиль Bambu Studio:</span>
